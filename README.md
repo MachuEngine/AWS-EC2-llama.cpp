@@ -4,5 +4,7 @@
 * CPU기반 추론 시 사용하는 인스턴스 유형 : t2.medium 
 * GPU기반 추론 시 사용하는 인스턴스 유형 : g4dn.xlarge
 ### 2. llama.cpp를 사용해 양자화를 통한 경량화, ai모델 추론 진행
+- 양자화 
 ### 3. AI 모델 : gemma_2_2b_it 을 llama.cpp을 통해 경량화하여 사용
-- 빌드된 파일은 고용량이어서 커밋되지 않아 빌드 전 상태로만 업로드
+- https://huggingface.co/google/gemma-2-2b-it
+- q5로 추론 진행
