@@ -1,0 +1,313 @@
+####################################
+## 필요한 것
+####################################
+# VS code 설치
+https://code.visualstudio.com/download
+
+# AWS계정
+실습 간 클라우드 이용 과금이 발생합니다.
+(큰 액수는 아닙니다. 아마 1-2만원 정도,,)
+
+실습과정을 잘 보셨다가 제공해 드리는 스크립트 그대로 따라 가셔도 진행에는 무방합니다.
+
+# 허깅페이스 계정 생성 및 토큰(READ)
+
+# 허깅페이스 모델 access권한
+https://huggingface.co/google/gemma-2-2b-it
+
+# 옵션1: (free tier) t2.micro(1CPU/1GiB) llama.cpp 빌드가 불가능
+# 옵션2: t2.small(1CPU/2GiB) 추론이 너무 오래걸림. 식사하고 와야함
+# 옵션3: t2.midium(2CPU/4GiB)
+
+# t2.midium
+####################################
+## 개발환경
+####################################
+# 인스턴스 시작
+https://aws.amazon.com/ko/console/
+
+# VS Code 설치/[ssh] 플러그인 설치
+
+# key.pem을 C:\Users\{user}\.ssh 폴더로 복사
+
+# .ssh 내용
+Host cpu
+  HostName {public IPv4}
+  User ubuntu
+  IdentityFile ~/.ssh/key.pem
+
+####################################
+## 인스턴스 진입
+####################################
+# os확인
+$ cat /etc/os-release
+
+# 패키지 리스트 업데이트
+$ sudo apt-get update
+
+# 필수 패키지 설치
+$ sudo apt-get install \
+	apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg \
+    lsb-release \
+    software-properties-common
+
+####################################
+## git 설치
+####################################
+$ sudo apt install git
+
+# 확인
+$ git --version
+
+# (옵션: git push를 위한 key등록)
+# ssh키 생성/git에 등록
+$ ssh-keygen -t rsa -b 2048 -f ~/.ssh/test_key
+
+# config
+$ vi ~/.ssh/config
+Host github.com
+     HostName github.com
+     User git
+     IdentityFile ~/.ssh/test_key
+     IdentitiesOnly yes
+     Port 22
+
+# git clone
+$ git clone https://github.com/Ahnkyuwon504/docker-llama.cpp.git
+
+####################################
+## docker 설치
+####################################    
+# GPG key 추가
+$ sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+
+# docker 저장소 설정
+$ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# 패키지 리스트 다시 업데이트
+$ sudo apt-get update
+
+# docker 설치
+$ sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# 현재 사용자를 docker그룹에 추가
+$ sudo usermod -aG docker $USER
+
+# 도커세션 새로고침
+$ newgrp docker
+
+# 확인
+$ docker run hello-world
+
+####################################
+## python 설치
+####################################
+# Python 3 설치
+$ sudo apt install python3
+
+# 확인
+$ python3 --version
+
+# pip 설치
+$ sudo apt install python3-pip
+
+# 가상환경 설치
+$ sudo apt install python3-venv
+
+# 가상환경 생성
+$ python3 -m venv kyuenv
+
+####################################
+## llama.cpp 설치(6분)
+####################################
+$ git clone https://github.com/ggerganov/llama.cpp
+$ cd llama.cpp
+
+# 빌드
+# 인스턴스 유형에 따라 -j옵션(병렬처리)을 주면 인스턴스가 뻗을수있음
+$ make
+
+####################################
+## CPU 기반 추론
+####################################
+
+####################################
+## 환경변수 설정
+####################################
+$ echo 'export HF_TOKEN="{token id}"' >> ~/.bashrc
+$ source ~/.bashrc
+
+####################################
+## 필요 패키지 설치(4분)
+####################################
+$ cd ~
+$ source kyuenv/bin/activate
+
+$ cd docker-llama.cpp/
+$ pip install -r requirements.txt
+
+####################################
+## 모델 다운로드(2분)
+####################################
+https://huggingface.co/google/gemma-2-2b-it
+
+$ python3 download.py
+
+####################################
+## 모델 변환(3분)
+####################################
+# 스왑메모리 8G 추가
+$ sudo fallocate -l 8G /swapfile
+$ sudo chmod 600 /swapfile
+$ sudo mkswap /swapfile
+$ sudo swapon /swapfile
+
+# 추론간 메모리 확인
+$ free -h
+
+# 모델 경로 이동
+$ mv models/ ~/
+
+# safetensors -> bf16 gguf
+$ sh convert.sh
+
+# gguf제외하고 전부 삭제
+$ cd ~/models/gemma-2-2b-it
+$ find . -type f ! -name '*.gguf' -delete
+
+####################################
+## 양자화(bf16 gguf -> 5bit)
+####################################
+# 변환(5분)
+$ sh quantize.sh
+
+####################################
+## 추론(16비트/5비트)
+####################################
+$ sh llama.cpp.gguf.infer.sh
+
+# gemma2 16bit 기준 약 60초/측정불가
+# gemma2 5bit 기준 약 35초/10분 이상
+
+####################################
+## GPU 기반 추론
+####################################
+
+####################################
+## NVIDIA 드라이버 설치
+####################################
+# GPU 확인
+$ lspci | grep -i nvidia
+
+# 커널/os 확인
+$ uname -a && cat /etc/os-release
+
+# NVIDIA 드라이버 설치
+$ sudo apt install -y ubuntu-drivers-common
+$ sudo ubuntu-drivers install
+
+# 재부팅
+$ sudo reboot
+
+# 확인
+$ nvidia-smi
+
+####################################
+## cuda toolkit 설치
+####################################
+$ sudo apt install nvidia-cuda-toolkit
+
+# 확인
+$ nvcc --version
+
+# 현시점에서 추론시 GPU메모리에 로드되지 않음
+
+####################################
+## llama.cpp 재빌드
+####################################
+# GPU index 환경변수로 추가. 사실 단일GPU면 안해도 됨
+$ export CUDA_VISIBLE_DEVICES=0 >> ~/.bashrc
+$ source ~/.bashrc
+
+# 종전에 make로 빌드했기 때문에, CPU기반 실행파일 제거
+$ make clean
+
+# GPU사용하도록 재빌드
+$ make GGML_CUDA=1 -j
+
+# 재추론. GPU메모리에 로딩됨을 확인
+# --n-gpu-layers 옵션을 지정해 GPU에 오프로딩할 레이어를 최적화해야함
+$ sh llama.cpp.gguf.infer.sh
+
+# BF16: 큰 차이 없음(--n-gpu-layers:1)
+# Q5_K_S: 1분 -> 3초(--n-gpu-layers:60)
+
+####################################
+## nvidia-container-toolkit 설치
+####################################
+# GPG키 추가/레포지토리 설정
+$ curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
+  && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+    sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+# update
+$ sudo apt-get update
+
+# 다운로드
+$ sudo apt-get install -y nvidia-container-toolkit
+
+# docker데몬 재시작
+$ sudo systemctl restart docker
+
+####################################
+## docker 컨테이너 구동
+####################################
+# GPU
+$ sh run.docker.sh
+
+# CPU
+$ sh run.docker.cpu.sh
+
+# http 요청
+$ sh container.query.sh
+
+####################################
+## 웹서버 컨테이너
+####################################
+$ cd gradio
+$ docker build -t gradio-app .
+
+$ docker images
+
+$ docker run --rm -p 7860:7860 gradio-app
+
+# AWS console/인바운드 규칙/7860포트 오픈
+
+####################################
+## 
+####################################
+
+####################################
+## 
+####################################
+
+####################################
+## 
+####################################
+
+####################################
+## 
+####################################
+
+####################################
+## TODO
+####################################
+# historical/multi-turn
+# token streaming
+# monitoring
+# evaluation
+# load balancing/
